@@ -17,13 +17,13 @@ pending_payments: Dict[str, dict] = {}
 
 class PaymentRequest(BaseModel):
     """상점 프로그램에서 보내는 결제 요청"""
-    order_id: str = Field(..., description="주문 ID")
+    order_id: int = Field(..., description="주문 ID")
     payment_amount: int = Field(..., ge=1, description="결제 금액")
 
 class PaymentResponse(BaseModel):
     """결제 서버가 돌려주는 결제 응답"""
     payment_id: str
-    order_id: str
+    order_id: int
     status: Literal["PENDING", "PAYMENT_COMPLETED", "CANCELLED"]
     payment_amount: int
     method: str
