@@ -1,14 +1,17 @@
-# 빌드 명령어
-docker build -t fastapi-streamlit .
+# 이미지 빌드
+docker build -t payment-server .
 
-# 실행 명령어
-docker run -d -p 9001:9001 -p 8501:8501 fastapi-streamlit
+# 컨테이너 실행
+docker run -d -p 9001:9001 -p 8501:8501 --name payment-container payment-server
 
 # 실행 중인 컨테이너 확인
 docker ps
 
 # 모든 컨테이너 확인 (중지된 것 포함)
 docker ps -a
+
+# 실시간으로 컨테이너의 로그 출력
+docker logs -f payment-container
 
 # 컨테이너 중지
 docker stop payment-container
