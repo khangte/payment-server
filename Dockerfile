@@ -1,9 +1,3 @@
-## 빌드 명령어
-# docker build -t fastapi-streamlit .
-
-## 실행 명령어
-# docker run -d -p 9001:9001 -p 8501:8501 fastapi-streamlit
-
 # 기본 이미지 설정
 FROM python:3.11-slim
 
