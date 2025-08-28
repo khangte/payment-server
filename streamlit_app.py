@@ -1,8 +1,12 @@
 import streamlit as st
 import requests
+import os
 import json
 from datetime import datetime
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # 페이지 설정
 st.set_page_config(
@@ -12,7 +16,7 @@ st.set_page_config(
 )
 
 # API 서버 URL
-API_BASE_URL = "http://localhost:9001"
+API_BASE_URL = os.getenv("API_BASE_URL")
 
 def main():
     st.title("💳 결제 관리 시스템")

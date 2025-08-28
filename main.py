@@ -6,7 +6,6 @@ import uuid
 from typing import Literal, Dict
 import logging
 import asyncio
-import time
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
