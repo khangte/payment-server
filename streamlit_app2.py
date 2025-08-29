@@ -3,7 +3,7 @@
 
 import json
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional
 from urllib.parse import urljoin
 
@@ -39,6 +39,18 @@ def _dt_parse(s: str) -> Optional[datetime]:
         return datetime.fromisoformat(s.replace("Z", "+00:00"))
     except Exception:
         return None
+
+def _to_kst(dt: datetime) -> datetime:
+    """UTC 시간을 한국 시간(KST)으로 변환"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    kst = timezone(timedelta(hours=9))
+    return dt.astimezone(kst)
+
+def _format_kst_time(dt: datetime) -> str:
+    """한국 시간을 HH:MM:SS 형식으로 포맷"""
+    kst_dt = _to_kst(dt)
+    return kst_dt.strftime('%H:%M:%S')
 
 def _flatten_list_payload(payload: Any) -> List[Dict[str, Any]]:
     if payload is None:
@@ -253,10 +265,10 @@ try:
                         st.write(f"**금액:** {_fmt_amount(p.get('amount'))}")
                     with c3:
                         if created_at:
-                            st.write(f"**생성:** {created_at.strftime('%H:%M:%S')}")
+                            st.write(f"**생성:** {_format_kst_time(created_at)}")
                     with c4:
                         if confirmed_at:
-                            st.write(f"**완료:** {confirmed_at.strftime('%H:%M:%S')}")
+                            st.write(f"**완료:** {_format_kst_time(confirmed_at)}")
                         st.success("완료됨")
 
         # 기타

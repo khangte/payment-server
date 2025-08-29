@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import time
 from dotenv import load_dotenv
 
@@ -17,6 +17,18 @@ st.set_page_config(
 
 # API 서버 URL
 API_BASE_URL = "http://localhost:9001"
+
+def _to_kst(dt: datetime) -> datetime:
+    """UTC 시간을 한국 시간(KST)으로 변환"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    kst = timezone(timedelta(hours=9))
+    return dt.astimezone(kst)
+
+def _format_kst_time(dt: datetime) -> str:
+    """한국 시간을 HH:MM:SS 형식으로 포맷"""
+    kst_dt = _to_kst(dt)
+    return kst_dt.strftime('%H:%M:%S')
 
 def main():
     st.title("💳 결제 관리 시스템")
@@ -117,7 +129,7 @@ def display_payment_status(data: dict):
                 
                 with col3:
                     created_time = datetime.fromisoformat(payment['created_at'].replace('Z', '+00:00'))
-                    st.write(f"**생성:** {created_time.strftime('%H:%M:%S')}")
+                    st.write(f"**생성:** {_format_kst_time(created_time)}")
                 
                 with col4:
                     if st.button("✅ 결제완료", key=f"complete_{payment_id}", type="primary"):
@@ -141,12 +153,12 @@ def display_payment_status(data: dict):
                 
                 with col3:
                     created_time = datetime.fromisoformat(payment['created_at'].replace('Z', '+00:00'))
-                    st.write(f"**생성:** {created_time.strftime('%H:%M:%S')}")
+                    st.write(f"**생성:** {_format_kst_time(created_time)}")
                 
                 with col4:
                     if payment.get('confirmed_at'):
                         confirmed_time = datetime.fromisoformat(payment['confirmed_at'].replace('Z', '+00:00'))
-                        st.write(f"**완료:** {confirmed_time.strftime('%H:%M:%S')}")
+                        st.write(f"**완료:** {_format_kst_time(confirmed_time)}")
                     st.success("✅ 완료됨")
                 
                 st.divider()
