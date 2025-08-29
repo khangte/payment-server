@@ -171,6 +171,11 @@ st.divider()
 
 # ---- 목록/현황 ----
 st.header("📋 결제 현황 (v2)")
+
+# 자동 새로고침
+if st.button("🔄 새로고침", key="refresh"):
+    st.rerun()
+
 try:
     list_url = urljoin(api_base_url.rstrip("/") + "/", "api/v2/pending-payments")
     r = requests.get(list_url, headers=_headers(token), timeout=timeout_s)
