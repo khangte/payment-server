@@ -1,8 +1,12 @@
 # 이미지 빌드
-docker build -t payment-server .
+docker build -t payment-server:1 .
 
 # 컨테이너 실행
-docker run -d -p 9001:9001 -p 8501:8501 --name payment-container payment-server
+# 1
+docker run -d --name payment-container1 -p 9001:9001 -p 8501:8501 payment-server:1
+
+# 2
+docker run -d --name payment-container2 -p 9001:9001 -p 9002:9002 -p 8501:8501 -p 8502:8502 payment-server:2
 
 # 실행 중인 컨테이너 확인
 docker ps
