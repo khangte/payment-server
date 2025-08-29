@@ -1,41 +1,103 @@
-# payment-server/streamlit_app2.py
-import os
-import requests
+# streamlit_app2.py
+# Payment v2 (Webhook) 콘솔 — 키를 모두 지정해 DuplicateWidgetID 방지
+
 import json
+import time
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
+from urllib.parse import urljoin
+
+import requests
 import streamlit as st
-from dotenv import load_dotenv
 
-# .env 로드
-load_dotenv()
+# =========================
+# 기본값
+# =========================
+DEFAULT_API_BASE_URL = "http://localhost:9002"
+DEFAULT_TIMEOUT = 8
+DEFAULT_TTL_SEC = 20
 
-# 환경변수 불러오기
-API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:9001")
-WEBHOOK_SECRET = os.getenv("PAYMENT_WEBHOOK_SECRET", "")
+# =========================
+# 유틸
+# =========================
+def _headers(token: str) -> Dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    if token:
+        h["Authorization"] = f"Bearer {token}"
+    return h
 
-st.set_page_config(page_title="Payment v2 (Webhook) Demo", layout="centered")
+def _safe_json(resp: requests.Response) -> Any:
+    try:
+        return resp.json()
+    except Exception:
+        return {"raw": resp.text}
 
-st.title("💳 Payment v2 (Webhook) Demo")
-st.markdown("---")
+def _dt_parse(s: str) -> Optional[datetime]:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except Exception:
+        return None
 
-st.sidebar.header("환경 설정")
-st.sidebar.write(f"**API_BASE_URL:** {API_BASE_URL}")
-if WEBHOOK_SECRET:
-    st.sidebar.success("WEBHOOK_SECRET 로드 완료")
-else:
-    st.sidebar.warning("WEBHOOK_SECRET이 설정되지 않았습니다!")
+def _flatten_list_payload(payload: Any) -> List[Dict[str, Any]]:
+    if payload is None:
+        return []
+    if isinstance(payload, dict):
+        if "payments" in payload:
+            payments = payload["payments"]
+            if isinstance(payments, dict):
+                out = []
+                for pid, obj in payments.items():
+                    o = dict(obj or {})
+                    o.setdefault("payment_id", pid)
+                    out.append(o)
+                return out
+            if isinstance(payments, list):
+                return [dict(x) if isinstance(x, dict) else {"value": x} for x in payments]
+        return [payload]
+    if isinstance(payload, list):
+        return [dict(x) if isinstance(x, dict) else {"value": x} for x in payload]
+    return [{"value": payload}]
 
-with st.form("pay_v2"):
-    st.subheader("새 결제 요청 (Webhook v2)")
-    tx_id = st.text_input("TX ID", value="tx_demo_123")
-    order_id = st.number_input("Order ID", value=123, step=1)
-    user_id = st.number_input("User ID", value=1, step=1)
-    amount = st.number_input("Amount", value=1000, step=100)
-    callback_url = st.text_input(
-        "Callback URL (운영서버)",
-        value="http://api.uhok.com:9000/api/orders/payment/webhook/v2/tx_demo_123?t=token"
-    )
+def _fmt_amount(v: Any) -> str:
+    try:
+        return f"{int(v):,}원"
+    except Exception:
+        return str(v)
 
-    submitted = st.form_submit_button("결제요청 (v2)")
+# =========================
+# UI 시작
+# =========================
+st.set_page_config(page_title="Payment v2 (Webhook) Console", page_icon="💳", layout="wide")
+st.title("💳 Payment Console (v2 / Webhook)")
+
+# ---- 사이드바: 환경 ----
+st.sidebar.title("환경 설정")
+api_base_url = st.sidebar.text_input("API_BASE_URL", value=DEFAULT_API_BASE_URL, key="env_api_base_url")
+token = st.sidebar.text_input("SERVICE_AUTH_TOKEN (선택)", type="password", key="env_token")
+timeout_s = st.sidebar.number_input("요청 타임아웃(초)", min_value=1, max_value=60, value=DEFAULT_TIMEOUT, key="env_timeout")
+ttl_sec = st.sidebar.number_input("결제 TTL(초) - 남은시간 표시용", min_value=1, max_value=600, value=DEFAULT_TTL_SEC, key="env_ttl")
+
+st.sidebar.divider()
+st.sidebar.header("🆕 새 결제 요청 (v2)")
+with st.sidebar.form("create_payment_form", clear_on_submit=False):
+    tx_id = st.text_input("tx_id (고유)", value="tx_1001", key="form_tx_id")
+    order_id = st.number_input("order_id", min_value=1, step=1, value=123, key="form_order_id")
+    user_id = st.number_input("user_id", min_value=1, step=1, value=1, key="form_user_id")
+    amount = st.number_input("amount", min_value=1, step=1, value=1000, key="form_amount")
+
+    st.caption("callback_url을 운영서버의 v2 수신 엔드포인트로 설정하세요.")
+    auto_cb = st.checkbox("order_id로 callback_url 자동 구성", value=True, key="form_cb_auto")
+
+    default_cb = f"http://localhost:8000/api/orders/payment/{int(order_id)}/confirm/v2"
+    if auto_cb:
+        callback_url = default_cb
+        st.text_input("callback_url (자동)", value=callback_url, disabled=True, key="form_cb_url_auto")
+    else:
+        callback_url = st.text_input("callback_url (수정 가능)", value=default_cb, key="form_cb_url_manual")
+
+    submitted = st.form_submit_button("결제요청 생성 (POST /api/v2/payments)", type="primary", use_container_width=True)
     if submitted:
         payload = {
             "version": "v2",
@@ -46,16 +108,142 @@ with st.form("pay_v2"):
             "callback_url": callback_url,
         }
         try:
-            url = f"{API_BASE_URL}/api/v2/payments"
-            r = requests.post(url, json=payload, timeout=5)
-            if r.status_code == 200:
-                st.success("✅ 결제 요청이 생성되었습니다!")
-                st.code(json.dumps(r.json(), ensure_ascii=False, indent=2), language="json")
+            url = urljoin(api_base_url.rstrip("/") + "/", "api/v2/payments")
+            resp = requests.post(url, json=payload, headers=_headers(token), timeout=timeout_s)
+            data = _safe_json(resp)
+            if resp.status_code // 100 == 2:
+                st.success("✅ 결제 요청 생성 성공 (PENDING)")
+                st.code(json.dumps(data, ensure_ascii=False, indent=2))
+                st.session_state["_just_created_"] = time.time()
             else:
-                st.error(f"❌ 결제 요청 실패: {r.status_code}")
-                st.text(r.text)
-        except Exception as e:
-            st.error(f"요청 실패: {e}")
+                st.error(f"❌ 생성 실패: {resp.status_code}")
+                st.code(json.dumps(data, ensure_ascii=False, indent=2))
+        except requests.exceptions.RequestException as e:
+            st.error(f"API 연결 오류: {e}")
 
-st.markdown("---")
-st.caption("환경변수 기반 설정: .env에서 API_BASE_URL, PAYMENT_WEBHOOK_SECRET을 관리하세요.")
+# ---- 상단 퀵액션 ----
+c1, c2, c3 = st.columns([1, 1, 1])
+with c1:
+    if st.button("헬스 체크(/)", use_container_width=True, key="btn_health"):
+        try:
+            r = requests.get(api_base_url, timeout=timeout_s)
+            st.write("Status:", r.status_code)
+            st.code(r.text if isinstance(r.text, str) else str(r.text))
+        except Exception as e:
+            st.error(f"헬스 실패: {e}")
+with c2:
+    if st.button("OpenAPI 보기(/openapi.json)", use_container_width=True, key="btn_openapi"):
+        try:
+            r = requests.get(urljoin(api_base_url.rstrip('/') + '/', 'openapi.json'), timeout=timeout_s)
+            st.code(json.dumps(r.json(), ensure_ascii=False, indent=2))
+        except Exception as e:
+            st.error(f"OpenAPI 실패: {e}")
+with c3:
+    auto_refresh = st.toggle("5초 자동 새로고침", value=False, key="toggle_autorefresh")
+    if auto_refresh:
+        if "_last_tick_" not in st.session_state:
+            st.session_state["_last_tick_"] = time.time()
+        elif time.time() - st.session_state["_last_tick_"] >= 5:
+            st.session_state["_last_tick_"] = time.time()
+            st.rerun()
+
+st.markdown(f"**서버:** `{api_base_url}` · **목록:** `/api/v2/pending-payments` · **생성:** `/api/v2/payments`")
+st.divider()
+
+# ---- 목록/현황 ----
+st.header("📋 결제 현황 (v2)")
+try:
+    list_url = urljoin(api_base_url.rstrip("/") + "/", "api/v2/pending-payments")
+    r = requests.get(list_url, headers=_headers(token), timeout=timeout_s)
+    data = _safe_json(r)
+    if r.status_code // 100 != 2:
+        st.error(f"목록 조회 실패: {r.status_code}")
+        st.code(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        items = _flatten_list_payload(data)
+
+        pending, completed, others = [], [], []
+        for obj in items:
+            status = str(obj.get("status", "")).upper()
+            if status in ("PENDING", "REQUESTED", "WAITING"):
+                pending.append(obj)
+            elif status in ("PAYMENT_COMPLETED", "COMPLETED", "DONE", "SUCCESS"):
+                completed.append(obj)
+            else:
+                others.append(obj)
+
+        # 방금 생성했으면 웹훅 반영 기다리며 새로고침 유도
+        if st.session_state.get("_just_created_") and (time.time() - st.session_state["_just_created_"] < 6):
+            st.info("웹훅 대기 중… 잠시 후 자동으로 새로고침됩니다.")
+            time.sleep(1.0)
+            st.rerun()
+
+        # 대기중
+        st.subheader("⏳ 대기 중")
+        if not pending:
+            st.info("대기 중 결제가 없습니다.")
+        else:
+            for idx, p in enumerate(pending, 1):
+                pid = p.get("payment_id") or f"item_{idx}"
+                created_at = _dt_parse(str(p.get("created_at", "")))
+                remaining = None
+                if created_at:
+                    elapsed = (datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)).total_seconds()
+                    try:
+                        remaining = max(0, int(ttl_sec) - int(elapsed))
+                    except Exception:
+                        remaining = None
+
+                with st.container():
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    with c1:
+                        st.write(f"**결제 ID:** `{pid}`")
+                        st.write(f"**주문 ID:** {p.get('order_id')}")
+                    with c2:
+                        st.write(f"**금액:** {_fmt_amount(p.get('amount'))}")
+                    with c3:
+                        st.write(f"**상태:** {p.get('status')}")
+                    with c4:
+                        if remaining is not None:
+                            st.metric("남은 시간", f"{remaining}s")
+                st.divider()
+
+        # 완료
+        st.subheader("✅ 완료된 결제")
+        if not completed:
+            st.info("완료된 결제가 없습니다.")
+        else:
+            for idx, p in enumerate(completed, 1):
+                pid = p.get("payment_id") or f"item_{idx}"
+                created_at = _dt_parse(str(p.get("created_at", "")))
+                confirmed_at = _dt_parse(str(p.get("confirmed_at", "")))
+                with st.container():
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    with c1:
+                        st.write(f"**결제 ID:** `{pid}`")
+                        st.write(f"**주문 ID:** {p.get('order_id')}")
+                    with c2:
+                        st.write(f"**금액:** {_fmt_amount(p.get('amount'))}")
+                    with c3:
+                        if created_at:
+                            st.write(f"**생성:** {created_at.strftime('%H:%M:%S')}")
+                    with c4:
+                        if confirmed_at:
+                            st.write(f"**완료:** {confirmed_at.strftime('%H:%M:%S')}")
+                        st.success("완료됨")
+
+        # 기타
+        if others:
+            st.subheader("📦 기타 상태")
+            st.code(json.dumps(others, ensure_ascii=False, indent=2))
+
+        # 통계
+        st.divider()
+        st.subheader("📊 통계")
+        st.metric("전체", len(items))
+        st.metric("대기 중", len(pending))
+        st.metric("완료", len(completed))
+
+except requests.exceptions.RequestException as e:
+    st.error(f"목록 조회 실패: {e}")
+    st.info("결제서버(main2.py) 실행 및 네트워크 설정을 확인하세요.")

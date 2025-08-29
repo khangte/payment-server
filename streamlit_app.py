@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # API 서버 URL
-API_BASE_URL = os.getenv("API_BASE_URL")
+API_BASE_URL = "http://localhost:9001"
 
 def main():
     st.title("💳 결제 관리 시스템")
