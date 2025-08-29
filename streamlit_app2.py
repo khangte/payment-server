@@ -66,6 +66,25 @@ def _fmt_amount(v: Any) -> str:
     except Exception:
         return str(v)
 
+def confirm_payment(api_base_url: str, payment_id: str, token: str, timeout_s: int):
+    """결제를 완료 처리합니다."""
+    try:
+        url = urljoin(api_base_url.rstrip("/") + "/", "api/v2/confirm-payment")
+        payload = {"payment_id": payment_id}
+        response = requests.post(url, json=payload, headers=_headers(token), timeout=timeout_s)
+        
+        if response.status_code == 200:
+            st.success(f"✅ 결제가 완료되었습니다!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            data = _safe_json(response)
+            st.error(f"결제 완료 처리 실패: {response.status_code}")
+            st.code(json.dumps(data, ensure_ascii=False, indent=2))
+            
+    except requests.exceptions.RequestException as e:
+        st.error(f"API 연결 오류: {e}")
+
 # =========================
 # UI 시작
 # =========================
@@ -147,7 +166,7 @@ with c3:
             st.session_state["_last_tick_"] = time.time()
             st.rerun()
 
-st.markdown(f"**서버:** `{api_base_url}` · **목록:** `/api/v2/pending-payments` · **생성:** `/api/v2/payments`")
+st.markdown(f"**서버:** `{api_base_url}` · **목록:** `/api/v2/pending-payments` · **생성:** `/api/v2/payments` · **완료:** `/api/v2/confirm-payment`")
 st.divider()
 
 # ---- 목록/현황 ----
@@ -172,9 +191,9 @@ try:
             else:
                 others.append(obj)
 
-        # 방금 생성했으면 웹훅 반영 기다리며 새로고침 유도
-        if st.session_state.get("_just_created_") and (time.time() - st.session_state["_just_created_"] < 6):
-            st.info("웹훅 대기 중… 잠시 후 자동으로 새로고침됩니다.")
+        # 방금 생성했으면 새로고침 유도
+        if st.session_state.get("_just_created_") and (time.time() - st.session_state["_just_created_"] < 3):
+            st.info("결제 요청이 생성되었습니다. 새로고침하여 확인하세요.")
             time.sleep(1.0)
             st.rerun()
 
@@ -195,7 +214,7 @@ try:
                         remaining = None
 
                 with st.container():
-                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
                     with c1:
                         st.write(f"**결제 ID:** `{pid}`")
                         st.write(f"**주문 ID:** {p.get('order_id')}")
@@ -206,6 +225,9 @@ try:
                     with c4:
                         if remaining is not None:
                             st.metric("남은 시간", f"{remaining}s")
+                    with c5:
+                        if st.button("✅ 결제완료", key=f"complete_{pid}", type="primary", use_container_width=True):
+                            confirm_payment(api_base_url, pid, token, timeout_s)
                 st.divider()
 
         # 완료

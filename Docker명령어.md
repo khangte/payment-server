@@ -6,7 +6,10 @@ docker build -t payment-server:1 .
 docker run -d --name payment-container1 -p 9001:9001 -p 8501:8501 payment-server:1
 
 # 2
-docker run -d --name payment-container2 -p 9001:9001 -p 9002:9002 -p 8501:8501 -p 8502:8502 payment-server:2
+docker run -d --name payment-container2 \
+    --env-file .env \
+    -p 9001:9001 -p 9002:9002 -p 8501:8501 -p 8502:8502 \
+    payment-server:2
 
 # 실행 중인 컨테이너 확인
 docker ps
