@@ -202,13 +202,23 @@ try:
     else:
         items = _flatten_list_payload(data)
 
-        pending, completed, others = [], [], []
+        pending, completed, failed, others = [], [], [], []
         for obj in items:
             status = str(obj.get("status", "")).upper()
+            
             if status in ("PENDING", "REQUESTED", "WAITING"):
+                # 추가로 시간 체크 (생성된 지 20초 이상 지난 PENDING은 실패로 분류)
+                created_at = _dt_parse(str(obj.get("created_at", "")))
+                if created_at:
+                    elapsed = (datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)).total_seconds()
+                    if elapsed > 20:  # 20초 초과 시 실패로 분류
+                        failed.append(obj)
+                        continue
                 pending.append(obj)
             elif status in ("PAYMENT_COMPLETED", "COMPLETED", "DONE", "SUCCESS"):
                 completed.append(obj)
+            elif status in ("TIMEOUT", "FAILED", "CANCELLED", "CANCELLED", "ERROR", "EXPIRED"):
+                failed.append(obj)
             else:
                 others.append(obj)
 
@@ -275,6 +285,29 @@ try:
                             st.write(f"**완료:** {_format_kst_time(confirmed_at)}")
                         st.success("완료됨")
 
+        # 실패
+        st.subheader("❌ 실패한 결제")
+        if not failed:
+            st.info("실패한 결제가 없습니다.")
+        else:
+            for idx, p in enumerate(failed, 1):
+                pid = p.get("payment_id") or f"item_{idx}"
+                created_at = _dt_parse(str(p.get("created_at", "")))
+                status = p.get("status", "UNKNOWN")
+                with st.container():
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+                    with c1:
+                        st.write(f"**결제 ID:** `{pid}`")
+                        st.write(f"**주문 ID:** {p.get('order_id')}")
+                    with c2:
+                        st.write(f"**금액:** {_fmt_amount(p.get('amount'))}")
+                    with c3:
+                        if created_at:
+                            st.write(f"**생성:** {_format_kst_time(created_at)}")
+                    with c4:
+                        st.write(f"**상태:** {status}")
+                        st.error("실패")
+
         # 기타
         if others:
             st.subheader("📦 기타 상태")
@@ -286,6 +319,7 @@ try:
         st.metric("전체", len(items))
         st.metric("대기 중", len(pending))
         st.metric("완료", len(completed))
+        st.metric("실패", len(failed))
 
 except requests.exceptions.RequestException as e:
     st.error(f"목록 조회 실패: {e}")
