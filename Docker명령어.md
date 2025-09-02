@@ -3,7 +3,10 @@ docker build -t payment-server:1 .
 
 # 컨테이너 실행
 # 1
-docker run -d --name payment-container1 -p 9001:9001 -p 8501:8501 payment-server:1
+docker run -d --name payment-container1 \
+    --env-file .env \
+    -p 9001:9001 -p 8501:8501 \
+    payment-server:1
 
 # 2
 docker run -d --name payment-container2 \
