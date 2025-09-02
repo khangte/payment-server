@@ -34,20 +34,6 @@ def main():
     st.title("💳 결제 관리 시스템")
     st.markdown("---")
     
-    # 사이드바에 새 결제 요청 폼
-    with st.sidebar:
-        st.header("🆕 새 결제 요청")
-        
-        with st.form("new_payment"):
-            order_id = st.text_input("주문 ID", placeholder="예: ORDER_001")
-            payment_amount = st.number_input("결제 금액", min_value=1, value=1000, step=100)
-            
-            if st.form_submit_button("결제 요청 생성", type="primary"):
-                if order_id and payment_amount:
-                    create_payment_request(order_id, payment_amount)
-                else:
-                    st.error("주문 ID와 결제 금액을 모두 입력해주세요.")
-    
     # 메인 컨텐츠
     col1, col2 = st.columns([2, 1])
     
@@ -71,6 +57,19 @@ def main():
             st.info("터미널에서 `python main.py` 명령어로 서버를 실행하세요.")
     
     with col2:
+        st.header("🆕 새 결제 요청")
+        
+        with st.form("new_payment"):
+            order_id = st.text_input("주문 ID", placeholder="예: ORDER_001")
+            payment_amount = st.number_input("결제 금액", min_value=1, value=1000, step=100)
+            
+            if st.form_submit_button("결제 요청 생성", type="primary"):
+                if order_id and payment_amount:
+                    create_payment_request(order_id, payment_amount)
+                else:
+                    st.error("주문 ID와 결제 금액을 모두 입력해주세요.")
+        
+        st.markdown("---")
         st.header("📊 통계")
         try:
             response = requests.get(f"{API_BASE_URL}/pending-payments")

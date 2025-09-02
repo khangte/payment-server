@@ -103,15 +103,17 @@ def confirm_payment(api_base_url: str, payment_id: str, token: str, timeout_s: i
 st.set_page_config(page_title="Payment v2 (Webhook) Console", page_icon="💳", layout="wide")
 st.title("💳 Payment Console (v2 / Webhook)")
 
-# ---- 사이드바: 환경 ----
-st.sidebar.title("환경 설정")
-api_base_url = st.sidebar.text_input("API_BASE_URL", value=DEFAULT_API_BASE_URL, key="env_api_base_url")
-token = st.sidebar.text_input("SERVICE_AUTH_TOKEN (선택)", type="password", key="env_token")
-timeout_s = st.sidebar.number_input("요청 타임아웃(초)", min_value=1, max_value=60, value=DEFAULT_TIMEOUT, key="env_timeout")
-ttl_sec = st.sidebar.number_input("결제 TTL(초) - 남은시간 표시용", min_value=1, max_value=600, value=DEFAULT_TTL_SEC, key="env_ttl")
+# 환경 설정 (메인 영역에 배치)
+col1, col2, col3 = st.columns([1, 1, 1])
+with col1:
+    api_base_url = st.text_input("API_BASE_URL", value=DEFAULT_API_BASE_URL, key="env_api_base_url")
+with col2:
+    token = st.text_input("SERVICE_AUTH_TOKEN (선택)", type="password", key="env_token")
+with col3:
+    timeout_s = st.number_input("요청 타임아웃(초)", min_value=1, max_value=60, value=DEFAULT_TIMEOUT, key="env_timeout")
 
-st.sidebar.divider()
-st.sidebar.header("🆕 새 결제 요청 (v2)")
+# ---- 사이드바: 새 결제 요청 ----
+st.sidebar.title("🆕 새 결제 요청 (v2)")
 with st.sidebar.form("create_payment_form", clear_on_submit=False):
     tx_id = st.text_input("tx_id (고유)", value="tx_1001", key="form_tx_id")
     order_id = st.number_input("order_id", min_value=1, step=1, value=123, key="form_order_id")
@@ -121,7 +123,7 @@ with st.sidebar.form("create_payment_form", clear_on_submit=False):
     st.caption("callback_url을 운영서버의 v2 수신 엔드포인트로 설정하세요.")
     auto_cb = st.checkbox("order_id로 callback_url 자동 구성", value=True, key="form_cb_auto")
 
-    default_cb = f"http://localhost:8000/api/orders/payment/{int(order_id)}/confirm/v2"
+    default_cb = f"{DEFAULT_API_BASE_URL}/api/orders/payment/{int(order_id)}/confirm/v2"
     if auto_cb:
         callback_url = default_cb
         st.text_input("callback_url (자동)", value=callback_url, disabled=True, key="form_cb_url_auto")
@@ -152,8 +154,10 @@ with st.sidebar.form("create_payment_form", clear_on_submit=False):
         except requests.exceptions.RequestException as e:
             st.error(f"API 연결 오류: {e}")
 
+st.markdown("---")
+
 # ---- 상단 퀵액션 ----
-c1, c2, c3 = st.columns([1, 1, 1])
+c1, c2, c3, c4 = st.columns([1, 1, 1, 1])
 with c1:
     if st.button("헬스 체크(/)", use_container_width=True, key="btn_health"):
         try:
@@ -226,7 +230,7 @@ try:
                 if created_at:
                     elapsed = (datetime.now(timezone.utc) - created_at.astimezone(timezone.utc)).total_seconds()
                     try:
-                        remaining = max(0, int(ttl_sec) - int(elapsed))
+                        remaining = max(0, int(DEFAULT_TTL_SEC) - int(elapsed))
                     except Exception:
                         remaining = None
 

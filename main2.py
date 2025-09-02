@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field, AnyHttpUrl
 from typing import Dict, Literal
 from datetime import datetime, timezone
 import httpx, hmac, hashlib, base64, os, json, logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="Payment Server v2 (webhook)")
 logging.basicConfig(level=logging.INFO)
