@@ -222,6 +222,16 @@ try:
             else:
                 others.append(obj)
 
+        # 모든 리스트를 생성 시간 기준으로 내림차순 정렬 (최신이 위로)
+        def sort_by_created_at(obj):
+            created_at = _dt_parse(str(obj.get("created_at", "")))
+            return created_at if created_at else datetime.min.replace(tzinfo=timezone.utc)
+        
+        pending.sort(key=sort_by_created_at, reverse=True)
+        completed.sort(key=sort_by_created_at, reverse=True)
+        failed.sort(key=sort_by_created_at, reverse=True)
+        others.sort(key=sort_by_created_at, reverse=True)
+
         # 방금 생성했으면 새로고침 유도
         if st.session_state.get("_just_created_") and (time.time() - st.session_state["_just_created_"] < 3):
             st.info("결제 요청이 생성되었습니다. 새로고침하여 확인하세요.")
