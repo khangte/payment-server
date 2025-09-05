@@ -75,9 +75,25 @@ async def _post_webhook(url: str, payload: dict, event: str = "payment.completed
     if SERVICE_AUTH_TOKEN:
         headers["Authorization"] = f"Bearer {SERVICE_AUTH_TOKEN}"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.post(url, content=raw, headers=headers)
-        log.info(f"[webhook] -> {url} {resp.status_code}")
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, content=raw, headers=headers)
+            log.info(f"[webhook] -> {url} {resp.status_code}")
+            
+            # 응답 상태 코드 확인
+            if resp.status_code >= 400:
+                log.error(f"[webhook] HTTP 에러: {url} {resp.status_code} - {resp.text}")
+                raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+                
+    except httpx.ConnectError as e:
+        log.error(f"[webhook] 연결 실패: {url} - {str(e)}")
+        raise Exception(f"연결 실패: {str(e)}")
+    except httpx.TimeoutException as e:
+        log.error(f"[webhook] 타임아웃: {url} - {str(e)}")
+        raise Exception(f"타임아웃: {str(e)}")
+    except Exception as e:
+        log.error(f"[webhook] 기타 에러: {url} - {str(e)}")
+        raise
 
 # ---- Routes ----
 @app.get("/")
@@ -167,8 +183,12 @@ async def confirm_payment_v2(req: PaymentConfirmRequest):
             "confirmed_at": payment["confirmed_at"],
         }
         
-        await _post_webhook(payment["callback_url"], payload, event="payment.completed")
-        log.info(f"웹훅 전송 완료: {payment['callback_url']}")
+        # backend에서 받은 callback_url 사용
+        callback_url = payment["callback_url"]
+        log.info(f"웹훅 전송 시도: {callback_url}")
+        
+        await _post_webhook(callback_url, payload, event="payment.completed")
+        log.info(f"웹훅 전송 완료: {callback_url}")
         
     except Exception as e:
         log.error(f"웹훅 전송 실패: {e}")
