@@ -5,14 +5,8 @@ docker build -t payment-server:1.0.0 .
 # 1. v2만 실행
 docker run -d --name payment-container \
     --env-file .env \
-    -p 9002:9002 -p 8502:8502 \
+    -p 9001:9001 -p 8501:8501 \
     payment-server:1.0.0
-
-# 2. v1, v2 둘 다 실행
-docker run -d --name payment-container2 \
-    --env-file .env \
-    -p 9001:9001 -p 9002:9002 -p 8501:8501 -p 8502:8502 \
-    payment-server:2
 
 # 실행 중인 컨테이너 확인
 docker ps

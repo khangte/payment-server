@@ -1,197 +1,188 @@
-# Payment Server v2 (Webhook)
+# Payment Server v1
 
-결제 서버 v2는 웹훅 기반의 결제 처리 시스템입니다. 결제 생성 후 수동으로 완료 처리할 수 있으며, 완료 시 운영서버로 웹훅을 전송합니다.
-
-## 📁 파일 구조
-
-- `main2.py` - FastAPI 기반 결제 서버 v2 (웹훅 전용)
-- `streamlit_app2.py` - Streamlit 기반 결제 관리 콘솔 v2
+간단한 결제 서버 시스템으로, FastAPI와 Streamlit을 사용하여 구현되었습니다.
 
 ## 🚀 주요 기능
 
-### main2.py (결제 서버 v2)
-- **결제 생성**: `POST /api/v2/payments` - PENDING 상태로 결제 요청 생성
-- **결제 완료**: `POST /api/v2/confirm-payment` - 수동으로 결제 완료 처리
-- **웹훅 전송**: 결제 완료 시 운영서버로 HMAC-SHA256 서명된 웹훅 전송
-- **결제 목록**: `GET /api/v2/pending-payments` - 모든 결제 현황 조회
+- **결제 요청 생성**: 주문 ID와 금액을 입력하여 결제 요청 생성
+- **결제 확인**: 대기 중인 결제를 수동으로 완료 처리
+- **자동 만료**: 20초 후 대기 중인 결제 자동 제거
+- **실시간 현황**: Streamlit 웹 인터페이스로 결제 현황 실시간 모니터링
+- **상태 추적**: 결제 상태별 분류 및 통계 제공
 
-### streamlit_app2.py (관리 콘솔)
-- **결제 생성**: 웹 UI를 통한 새로운 결제 요청 생성
-- **결제 관리**: 대기 중/완료/실패 상태별 결제 목록 조회
-- **결제 완료**: 원클릭으로 결제 완료 처리
-- **실시간 모니터링**: 5초 자동 새로고침 및 실시간 상태 업데이트
+## 📁 프로젝트 구조
 
-## 🔧 환경 설정
-
-### 환경 변수 (.env)
-```env
-PAYMENT_WEBHOOK_SECRET=your_webhook_secret_key
-SERVICE_AUTH_TOKEN=your_auth_token  # 선택사항
+```
+payment-server/
+├── main.py              # FastAPI 서버 (v1)
+├── streamlit_app.py     # Streamlit 웹 인터페이스
+├── requirements.txt     # Python 의존성
+├── Dockerfile          # Docker 컨테이너 설정
+├── Docker명령어.md     # Docker 사용 가이드
+└── README.md           # 프로젝트 문서
 ```
 
-### 의존성 설치
+## 🛠️ 설치 및 실행
+
+### 1. 의존성 설치
+
 ```bash
 pip install -r requirements.txt
 ```
 
-## 🏃‍♂️ 실행 방법
+### 2. 서버 실행
 
-### 1. 결제 서버 실행
 ```bash
-# FastAPI 서버 실행 (포트 9002)
-python main2.py
-# 또는
-uvicorn main2:app --host 0.0.0.0 --port 9002 --reload
+# FastAPI 서버 실행 (포트 9001)
+python main.py
+
+# 또는 uvicorn으로 실행
+uvicorn main:app --host 0.0.0.0 --port 9001 --reload
 ```
 
-### 2. 관리 콘솔 실행
+### 3. 웹 인터페이스 실행
+
 ```bash
-# Streamlit 콘솔 실행 (포트 8501)
-streamlit run streamlit_app2.py
+# Streamlit 웹 인터페이스 실행 (포트 8501)
+streamlit run streamlit_app.py
 ```
 
 ## 📡 API 엔드포인트
 
-### 결제 생성
-```http
-POST /api/v2/payments
-Content-Type: application/json
+### 결제 요청
+- **POST** `/pay`
+  - 결제 요청을 생성하고 대기 상태로 저장
+  - 20초 후 자동 만료
 
-{
-  "version": "v2",
-  "tx_id": "tx_1001",
-  "order_id": 123,
-  "user_id": 1,
-  "amount": 1000,
-  "callback_url": "https://ops/api/orders/payment/webhook/v2/tx_1001"
-}
-```
+### 결제 확인
+- **POST** `/confirm-payment`
+  - 대기 중인 결제를 완료 처리
 
-**응답:**
-```json
-{
-  "ok": true,
-  "tx_id": "tx_1001",
-  "status": "PENDING",
-  "payment_id": "pay_tx_1001"
-}
-```
+### 상태 조회
+- **GET** `/payment-status/{payment_id}`
+  - 특정 결제의 상태 확인
 
-### 결제 완료
-```http
-POST /api/v2/confirm-payment
-Content-Type: application/json
+- **GET** `/pending-payments`
+  - 모든 결제 현황 조회
 
-{
-  "payment_id": "pay_tx_1001"
-}
-```
+### 유틸리티
+- **GET** `/healthz`
+  - 서버 헬스 체크
 
-**응답:**
-```json
-{
-  "ok": true,
-  "payment_id": "pay_tx_1001",
-  "status": "PAYMENT_COMPLETED",
-  "confirmed_at": "2024-01-01T12:00:00Z"
-}
-```
+- **GET** `/debug/pending-payments`
+  - 디버깅용 상세 정보
 
-### 결제 목록 조회
-```http
-GET /api/v2/pending-payments
-```
+- **GET** `/expired-payments-info`
+  - 만료된 결제 정보 조회
 
-**응답:**
-```json
-{
-  "pending_count": 2,
-  "completed_count": 5,
-  "payments": {
-    "pay_tx_1001": {
-      "payment_id": "pay_tx_1001",
-      "order_id": 123,
-      "tx_id": "tx_1001",
-      "user_id": 1,
-      "amount": 1000,
-      "status": "PENDING",
-      "created_at": "2024-01-01T12:00:00Z",
-      "confirmed_at": null,
-      "callback_url": "https://ops/api/orders/payment/webhook/v2/tx_1001"
-    }
-  }
-}
-```
+## 💳 결제 플로우
 
-## 🔐 웹훅 보안
+1. **결제 요청**: 클라이언트가 주문 ID와 금액으로 결제 요청
+2. **대기 상태**: 결제가 `PENDING` 상태로 저장됨
+3. **수동 확인**: 관리자가 웹 인터페이스에서 결제 완료 버튼 클릭
+4. **완료 처리**: 결제 상태가 `PAYMENT_COMPLETED`로 변경
+5. **자동 정리**: 20초 후 미확인 결제는 자동으로 제거
 
-웹훅은 HMAC-SHA256 서명을 사용하여 보안을 보장합니다:
+## 🔧 설정
 
-### 헤더
-- `X-Payment-Event`: `payment.completed`
-- `X-Payment-Signature`: HMAC-SHA256 Base64 인코딩된 서명
-- `Content-Type`: `application/json`
+### 환경 변수
+- 서버 포트: 기본값 9001
+- 자동 만료 시간: 20초
+- 결제 방식: CARD (고정)
 
-### 서명 검증
-```python
-import hmac
-import hashlib
-import base64
+### API 서버 URL
+- 기본값: `http://localhost:9001`
+- `streamlit_app.py`에서 `API_BASE_URL` 변수로 설정 가능
 
-def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> bool:
-    expected = hmac.new(
-        secret.encode('utf-8'), 
-        payload, 
-        hashlib.sha256
-    ).digest()
-    expected_b64 = base64.b64encode(expected).decode('ascii')
-    return hmac.compare_digest(signature, expected_b64)
-```
+## 📊 웹 인터페이스 기능
 
-## 🎯 워크플로우
+### 메인 화면
+- **결제 현황**: 대기 중/완료된 결제 목록
+- **새 결제 요청**: 주문 ID와 금액 입력 폼
+- **통계**: 결제 상태별 개수 및 차트
 
-1. **결제 요청**: 클라이언트가 `POST /api/v2/payments`로 결제 생성
-2. **PENDING 상태**: 결제가 대기 상태로 저장됨
-3. **수동 완료**: 관리자가 `POST /api/v2/confirm-payment`로 결제 완료
-4. **웹훅 전송**: 운영서버의 `callback_url`로 웹훅 전송
-5. **상태 업데이트**: 결제 상태가 `PAYMENT_COMPLETED`로 변경
+### 실시간 업데이트
+- 새로고침 버튼으로 수동 업데이트
+- 결제 완료 시 자동 새로고침
+- 한국 시간(KST) 표시
 
-## 🔍 관리 콘솔 기능
+## 🐳 Docker 지원
 
-### 주요 화면
-- **새 결제 요청**: 사이드바에서 새로운 결제 생성
-- **결제 현황**: 대기 중/완료/실패 상태별 목록
-- **원클릭 완료**: 대기 중인 결제를 즉시 완료 처리
-- **실시간 모니터링**: 자동 새로고침으로 실시간 상태 확인
-
-### 설정 옵션
-- **API Base URL**: 결제 서버 주소 (기본: http://localhost:9002)
-- **인증 토큰**: SERVICE_AUTH_TOKEN (선택사항)
-- **타임아웃**: API 요청 타임아웃 설정 (기본: 60초)
-- **자동 새로고침**: 2초마다 자동으로 상태 업데이트
-
-## 🐳 Docker 실행
-
+### Dockerfile 사용
 ```bash
-# Docker 이미지 빌드
-docker build -t payment-server:1.0.0 .
+# 이미지 빌드
+docker build -t payment-server-v1 .
 
 # 컨테이너 실행
-docker run -d --name payment-container \
-    --env-file .env \
-    -p 9002:9002 -p 8502:8502 \
-    payment-server:1.0.0
+docker run -p 9001:9001 payment-server-v1
 ```
 
-## 📝 개발 노트
+### Docker Compose (선택사항)
+```yaml
+version: '3.8'
+services:
+  payment-server:
+    build: .
+    ports:
+      - "9001:9001"
+    environment:
+      - PYTHONUNBUFFERED=1
+```
 
-- **메모리 저장**: 개발 편의를 위해 인메모리 저장소 사용 (운영환경에서는 DB 연동 필요)
-- **멱등성**: 동일한 `tx_id`로 재요청 시 기존 결제 정보 반환
-- **에러 처리**: 웹훅 전송 실패 시에도 결제는 완료 처리됨
-- **로깅**: 모든 주요 작업에 대한 상세 로그 기록
+## 🔍 디버깅
 
-## 🔗 관련 문서
+### 로그 확인
+- 서버 실행 시 상세한 로그 출력
+- 결제 생성/확인/조회 과정 추적
+- 자동 정리 태스크 상태 모니터링
 
-- [FastAPI 공식 문서](https://fastapi.tiangolo.com/)
-- [Streamlit 공식 문서](https://docs.streamlit.io/)
-- [웹훅 보안 가이드](https://en.wikipedia.org/wiki/HMAC)
+### 디버그 엔드포인트
+- `/debug/pending-payments`: 내부 데이터 구조 확인
+- `/expired-payments-info`: 만료 예정/만료된 결제 정보
+
+## 📝 데이터 모델
+
+### PaymentRequest
+```json
+{
+  "order_id": "int",
+  "payment_amount": "int"
+}
+```
+
+### PaymentResponse
+```json
+{
+  "payment_id": "string",
+  "order_id": "int",
+  "status": "PENDING|PAYMENT_COMPLETED|CANCELLED",
+  "payment_amount": "int",
+  "method": "string",
+  "created_at": "string",
+  "confirmed_at": "string|null"
+}
+```
+
+## 🚨 주의사항
+
+- **메모리 저장**: 결제 데이터는 메모리에 저장되므로 서버 재시작 시 데이터 손실
+- **자동 만료**: 20초 후 미확인 결제는 자동으로 제거됨
+- **단일 인스턴스**: 현재 버전은 단일 서버 인스턴스에서만 동작
+- **인증 없음**: 현재 버전은 인증/권한 관리 기능 없음
+
+## 🔄 업그레이드 가이드
+
+v1에서 v2로 업그레이드하려면:
+1. `main2.py` (v2 서버) 사용
+2. `streamlit_app2.py` (v2 웹 인터페이스) 사용
+3. 웹훅 기반 결제 플로우로 전환
+
+## 📞 지원
+
+문제가 발생하거나 질문이 있으시면 이슈를 생성해주세요.
+
+---
+
+**버전**: v1.0.0  
+**최종 업데이트**: 2025-01-02  
+**라이선스**: MIT
