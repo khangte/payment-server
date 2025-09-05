@@ -3,7 +3,7 @@ docker build -t payment-server:1 .
 
 # 컨테이너 실행
 # 1. v2만 실행
-docker run -d --name payment-container0.4.3 \
+docker run -d --name payment-container \
     --env-file .env \
     -p 9002:9002 -p 8502:8502 \
     payment-server:0.4.3
