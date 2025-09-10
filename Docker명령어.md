@@ -2,9 +2,10 @@
 docker build -t payment-server:3.0.0 .
 
 # 컨테이너 실행 (v3만 실행)
+## 현재 노트북에서 8502 포트가 막혀있어서 18002 포트 사용
 docker run -d --name payment-container \
     --env-file .env \
-    -p 9002:9002 -p 8502:8502 \
+    -p 9002:9002 -p 18002:8502 \
     payment-server:3.0.0
 
 # 실행 중인 컨테이너 확인
