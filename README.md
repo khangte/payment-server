@@ -4,8 +4,8 @@
 
 ## 📁 파일 구조
 
-- `main2.py` - FastAPI 기반 결제 서버 v2 (웹훅 전용)
-- `streamlit_app2.py` - Streamlit 기반 결제 관리 콘솔 v2
+- `main.py` - FastAPI 기반 결제 서버 v2 (웹훅 전용)
+- `streamlit_app.py` - Streamlit 기반 결제 관리 콘솔 v2
 
 ## 🚀 주요 기능
 
@@ -39,15 +39,15 @@ pip install -r requirements.txt
 ### 1. 결제 서버 실행
 ```bash
 # FastAPI 서버 실행 (포트 9002)
-python main2.py
+python main.py
 # 또는
-uvicorn main2:app --host 0.0.0.0 --port 9002 --reload
+uvicorn main:app --host 0.0.0.0 --port 9002 --reload
 ```
 
 ### 2. 관리 콘솔 실행
 ```bash
 # Streamlit 콘솔 실행 (포트 8501)
-streamlit run streamlit_app2.py
+streamlit run streamlit_app.py
 ```
 
 ## 📡 API 엔드포인트
@@ -174,13 +174,13 @@ def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> boo
 
 ```bash
 # Docker 이미지 빌드
-docker build -t payment-server:1.0.0 .
+docker build -t payment-server:2.0.0 .
 
 # 컨테이너 실행
 docker run -d --name payment-container \
     --env-file .env \
     -p 9002:9002 -p 8502:8502 \
-    payment-server:1.0.0
+    payment-server:2.0.0
 ```
 
 ## 📝 개발 노트

@@ -1,11 +1,11 @@
 # 이미지 빌드
-docker build -t payment-server:1.0.0 .
+docker build -t payment-server:2.0.0 .
 
 # 컨테이너 실행 (v2만 실행)
 docker run -d --name payment-container \
     --env-file .env \
     -p 9002:9002 -p 8502:8502 \
-    payment-server:1.0.0
+    payment-server:2.0.0
 
 # 실행 중인 컨테이너 확인
 docker ps

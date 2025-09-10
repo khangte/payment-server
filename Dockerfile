@@ -16,6 +16,6 @@ EXPOSE 9002 8502
 
 # ⭐ v2를 띄움
 CMD ["sh", "-c", "\
-  uvicorn main2:app --host 0.0.0.0 --port 9002 & \
-  streamlit run streamlit_app2.py --server.port 8502 --server.address 0.0.0.0 & \
+  uvicorn main:app --host 0.0.0.0 --port 9002 & \
+  streamlit run streamlit_app.py --server.port 8502 --server.address 0.0.0.0 & \
   wait"]
