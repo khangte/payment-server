@@ -126,11 +126,12 @@ async def start_payment_v2(req: PaymentInitV2):
     """
     결제 생성(v2): callback_url은 운영서버의 웹훅 수신 엔드포인트
     (ex. /api/orders/payment/webhook/v2/{tx_id})
+    자동으로 결제 완료 처리됩니다.
     """
     payment_id = f"pay_{req.tx_id}"
     created_at = _now_iso()
 
-    # 멱등/저장
+    # 멱등/저장 (PENDING으로 시작)
     payments[payment_id] = {
         "payment_id": payment_id,
         "order_id": req.order_id,
@@ -145,7 +146,40 @@ async def start_payment_v2(req: PaymentInitV2):
 
     log.info(f"결제 요청 생성: {payment_id}, 주문ID: {req.order_id}, 상태: PENDING")
     
-    return {"ok": True, "tx_id": req.tx_id, "status": "PENDING", "payment_id": payment_id}
+    # 자동으로 결제 완료 처리
+    try:
+        # 결제 완료로 상태 변경
+        confirmed_at = _now_iso()
+        payments[payment_id]["status"] = "PAYMENT_COMPLETED"
+        payments[payment_id]["confirmed_at"] = confirmed_at
+        
+        log.info(f"자동 결제 완료 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_COMPLETED")
+        
+        # 웹훅 전송
+        payload = {
+            "version": "v2",
+            "payment_id": payment_id,
+            "order_id": req.order_id,
+            "tx_id": req.tx_id,
+            "user_id": req.user_id,
+            "amount": req.amount,
+            "status": "PAYMENT_COMPLETED",
+            "created_at": created_at,
+            "confirmed_at": confirmed_at,
+        }
+        
+        # backend에서 받은 callback_url 사용
+        callback_url = str(req.callback_url)
+        log.info(f"웹훅 전송 시도: {callback_url}")
+        
+        await _post_webhook(callback_url, payload, event="payment.completed")
+        log.info(f"웹훅 전송 완료: {callback_url}")
+        
+    except Exception as e:
+        log.error(f"자동 결제 완료 처리 실패: {e}")
+        # 자동 완료 실패해도 PENDING 상태로 반환
+    
+    return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_COMPLETED", "payment_id": payment_id}
 
 @app.post("/api/v2/confirm-payment", response_model=PaymentConfirmResponse)
 async def confirm_payment_v2(req: PaymentConfirmRequest):

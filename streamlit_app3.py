@@ -78,24 +78,7 @@ def _fmt_amount(v: Any) -> str:
     except Exception:
         return str(v)
 
-def confirm_payment(api_base_url: str, payment_id: str, token: str, timeout_s: int):
-    """결제를 완료 처리합니다."""
-    try:
-        url = urljoin(api_base_url.rstrip("/") + "/", "api/v2/confirm-payment")
-        payload = {"payment_id": payment_id}
-        response = requests.post(url, json=payload, headers=_headers(token), timeout=timeout_s)
-        
-        if response.status_code == 200:
-            st.success(f"✅ 결제가 완료되었습니다!")
-            time.sleep(1)
-            st.rerun()
-        else:
-            data = _safe_json(response)
-            st.error(f"결제 완료 처리 실패: {response.status_code}")
-            st.code(json.dumps(data, ensure_ascii=False, indent=2))
-            
-    except requests.exceptions.RequestException as e:
-        st.error(f"API 연결 오류: {e}")
+# confirm_payment 함수 제거됨 - 이제 자동으로 결제가 완료됩니다
 
 # =========================
 # UI 시작
@@ -145,7 +128,7 @@ with st.sidebar.form("create_payment_form", clear_on_submit=False):
             resp = requests.post(url, json=payload, headers=_headers(token), timeout=timeout_s)
             data = _safe_json(resp)
             if resp.status_code // 100 == 2:
-                st.success("✅ 결제 요청 생성 성공 (PENDING)")
+                st.success("✅ 결제 요청 생성 및 자동 완료 성공")
                 st.code(json.dumps(data, ensure_ascii=False, indent=2))
                 st.session_state["_just_created_"] = time.time()
             else:
@@ -234,14 +217,14 @@ try:
 
         # 방금 생성했으면 새로고침 유도
         if st.session_state.get("_just_created_") and (time.time() - st.session_state["_just_created_"] < 3):
-            st.info("결제 요청이 생성되었습니다. 새로고침하여 확인하세요.")
+            st.info("결제 요청이 생성되고 자동으로 완료되었습니다. 새로고침하여 확인하세요.")
             time.sleep(1.0)
             st.rerun()
 
-        # 대기중
+        # 대기중 (이제 자동으로 완료되므로 빈 상태일 가능성이 높음)
         st.subheader("⏳ 대기 중")
         if not pending:
-            st.info("대기 중 결제가 없습니다.")
+            st.info("대기 중 결제가 없습니다. (자동 완료 처리됨)")
         else:
             for idx, p in enumerate(pending, 1):
                 pid = p.get("payment_id") or f"item_{idx}"
@@ -255,7 +238,7 @@ try:
                         remaining = None
 
                 with st.container():
-                    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
+                    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
                     with c1:
                         st.write(f"**결제 ID:** `{pid}`")
                         st.write(f"**주문 ID:** {p.get('order_id')}")
@@ -266,9 +249,7 @@ try:
                     with c4:
                         if remaining is not None:
                             st.metric("남은 시간", f"{remaining}s")
-                    with c5:
-                        if st.button("✅ 결제완료", key=f"complete_{pid}", type="primary", use_container_width=True):
-                            confirm_payment(api_base_url, pid, token, timeout_s)
+                        st.info("자동 완료 대기 중")
                 st.divider()
 
         # 완료
