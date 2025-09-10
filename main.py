@@ -1,5 +1,5 @@
-# payment-server/main2.py
-# v2 (Webhook 전용)
+# payment-server/main3.py
+# v3 (Webhook_auto_complete 전용)
 # - 생성: POST /api/v2/payments  → PENDING 응답
 # - 수동 완료: POST /api/v2/confirm-payment → PAYMENT_COMPLETED 응답
 # - 웹훅: POST <callback_url>  (ex. /api/orders/payment/webhook/v2/{tx_id})
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI(title="Payment Server v2 (webhook)")
+app = FastAPI(title="Payment Server v3 (webhook_auto_complete)")
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("main")
 
@@ -175,11 +175,13 @@ async def start_payment_v2(req: PaymentInitV2):
         await _post_webhook(callback_url, payload, event="payment.completed")
         log.info(f"웹훅 전송 완료: {callback_url}")
         
+        # 웹훅 전송 성공 시에만 PAYMENT_COMPLETED 반환
+        return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_COMPLETED", "payment_id": payment_id}
+        
     except Exception as e:
         log.error(f"자동 결제 완료 처리 실패: {e}")
-        # 자동 완료 실패해도 PENDING 상태로 반환
-    
-    return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_COMPLETED", "payment_id": payment_id}
+        # 웹훅 전송 실패 시 PENDING 상태로 반환
+        return {"ok": True, "tx_id": req.tx_id, "status": "PENDING", "payment_id": payment_id}
 
 @app.post("/api/v2/confirm-payment", response_model=PaymentConfirmResponse)
 async def confirm_payment_v2(req: PaymentConfirmRequest):

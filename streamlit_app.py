@@ -1,5 +1,5 @@
-# streamlit_app2.py
-# Payment v2 (Webhook) 콘솔 — 키를 모두 지정해 DuplicateWidgetID 방지
+# streamlit_app.py
+# Payment v3 (Webhook_auto) 콘솔 — 키를 모두 지정해 DuplicateWidgetID 방지
 
 import json
 import time
