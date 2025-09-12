@@ -42,7 +42,7 @@ pip install -r requirements.txt
 echo "PAYMENT_WEBHOOK_SECRET=your_secret_key" > .env
 
 # 2. 서비스 실행
-docker-compose up -d
+docker compose up -d
 
 # 3. 서비스 확인
 # - FastAPI 서버: http://localhost:9002
@@ -50,10 +50,10 @@ docker-compose up -d
 # - API 문서: http://localhost:9002/docs
 
 # 4. 로그 확인
-docker-compose logs -f
+docker compose logs -f
 
 # 5. 서비스 중지
-docker-compose down
+docker compose down
 ```
 
 ### 방법 2: 로컬 Python 실행
