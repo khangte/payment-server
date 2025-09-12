@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field, AnyHttpUrl
 from typing import Dict, Literal
 from datetime import datetime, timezone
-import httpx, hmac, hashlib, base64, os, json, logging
+import httpx, hmac, hashlib, base64, os, json, logging, asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -145,6 +145,10 @@ async def start_payment_v2(req: PaymentInitV2):
     }
 
     log.info(f"결제 요청 생성: {payment_id}, 주문ID: {req.order_id}, 상태: PENDING")
+    
+    # 자동결제 처리 전 2초 대기
+    await asyncio.sleep(2)
+    log.info("자동결제 처리 시작 - 2초 대기 완료")
     
     # 자동으로 결제 완료 처리
     try:
