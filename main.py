@@ -96,7 +96,7 @@ async def _post_webhook(url: str, payload: dict, event: str = "payment.completed
         raise
 
 # ---- Routes ----
-@app.get("/")
+@app.get("/health")
 async def health():
     return {"ok": True, "service": "payment-v2-webhook", "docs": "/docs"}
 
