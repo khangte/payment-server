@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  payment-server:
+    build: .
+    container_name: payment-server
+    ports:
+      - "9002:9002"  # FastAPI 서버 (main.py)
+      - "18002:8502"  # Streamlit 콘솔 (streamlit_app.py)
+    environment:
+      - PAYMENT_WEBHOOK_SECRET=${PAYMENT_WEBHOOK_SECRET:-default_webhook_secret}
+      - SERVICE_AUTH_TOKEN=${SERVICE_AUTH_TOKEN:-}
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs  # 로그 디렉토리 마운트 (선택사항)
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - payment-network
+
+  # 개발용 데이터베이스 (선택사항 - 현재는 인메모리 사용)
+  # redis:
+  #   image: redis:7-alpine
+  #   container_name: payment-redis
+  #   ports:
+  #     - "6379:6379"
+  #   volumes:
+  #     - redis_data:/data
+  #   restart: unless-stopped
+  #   networks:
+  #     - payment-network
+
+networks:
+  payment-network:
+    driver: bridge
+
+# volumes:
+#   redis_data:

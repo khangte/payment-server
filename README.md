@@ -36,17 +36,40 @@ pip install -r requirements.txt
 
 ## 🏃‍♂️ 실행 방법
 
-### 1. 결제 서버 실행
+### 방법 1: Docker Compose 사용 (권장)
 ```bash
-# FastAPI 서버 실행 (포트 9002)
+# 1. 환경 변수 설정
+echo "PAYMENT_WEBHOOK_SECRET=your_secret_key" > .env
+
+# 2. 서비스 실행
+docker-compose up -d
+
+# 3. 서비스 확인
+# - FastAPI 서버: http://localhost:9002
+# - Streamlit 콘솔: http://localhost:8502
+# - API 문서: http://localhost:9002/docs
+
+# 4. 로그 확인
+docker-compose logs -f
+
+# 5. 서비스 중지
+docker-compose down
+```
+
+### 방법 2: 로컬 Python 실행
+```bash
+# 1. 의존성 설치
+pip install -r requirements.txt
+
+# 2. 환경 변수 설정
+export PAYMENT_WEBHOOK_SECRET=your_secret_key
+
+# 3. FastAPI 서버 실행 (포트 9002)
 python main.py
 # 또는
 uvicorn main:app --host 0.0.0.0 --port 9002 --reload
-```
 
-### 2. 관리 콘솔 실행
-```bash
-# Streamlit 콘솔 실행 (포트 8501)
+# 4. 새 터미널에서 Streamlit 콘솔 실행 (포트 8501)
 streamlit run streamlit_app.py
 ```
 
@@ -182,6 +205,23 @@ def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> boo
 
 ## 🐳 Docker 실행
 
+### Docker Compose 사용 (권장)
+```bash
+# 1. 환경 변수 파일 생성
+cp .env.example .env
+# .env 파일을 편집하여 실제 값으로 설정
+
+# 2. 서비스 실행
+docker-compose up -d
+
+# 3. 로그 확인
+docker-compose logs -f
+
+# 4. 서비스 중지
+docker-compose down
+```
+
+### Docker 단일 컨테이너 실행
 ```bash
 # Docker 이미지 빌드
 docker build -t payment-server:1.0.0 .
@@ -191,6 +231,18 @@ docker run -d --name payment-container \
     --env-file .env \
     -p 9002:9002 -p 8502:8502 \
     payment-server:1.0.0
+```
+
+### 환경 변수 파일 (.env) 예시
+```env
+# 웹훅 서명을 위한 시크릿 키 (필수)
+PAYMENT_WEBHOOK_SECRET=your_webhook_secret_key_here
+
+# 운영서버 인증 토큰 (선택사항)
+SERVICE_AUTH_TOKEN=your_auth_token_here
+
+# 로그 레벨 (선택사항)
+LOG_LEVEL=INFO
 ```
 
 ## 📝 개발 노트
