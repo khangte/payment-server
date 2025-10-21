@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: payment-server:3.0.2
+    image: payment-server:3.1.0
     container_name: payment-server
     ports:
       - "9002:9002"  # FastAPI 서버 (main.py)
