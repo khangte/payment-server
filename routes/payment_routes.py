@@ -109,8 +109,12 @@ async def start_payment_v2(req: PaymentInitV2):
         
     except Exception as e:
         log.error(f"자동 결제 완료 처리 실패: {e}")
-        # 웹훅 전송 실패 시 PENDING 상태로 반환
-        return {"ok": True, "tx_id": req.tx_id, "status": "PENDING", "payment_id": payment_id}
+        # 웹훅 전송 실패 시 결제 취소로 상태 변경
+        payment_storage.update_payment(payment_id, {
+            "status": "PAYMENT_CANCELLED"
+        })
+        log.info(f"웹훅 실패로 결제 취소 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_CANCELLED")
+        return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_CANCELLED", "payment_id": payment_id}
 
 
 @router.post("/api/v2/confirm-payment", response_model=PaymentConfirmResponse)
@@ -149,7 +153,11 @@ async def confirm_payment_v2(req: PaymentConfirmRequest):
         
     except Exception as e:
         log.error(f"웹훅 전송 실패: {e}")
-        # 웹훅 실패해도 결제는 완료 처리됨
+        # 웹훅 실패 시 결제 취소 처리
+        payment_storage.update_payment(payment_id, {
+            "status": "PAYMENT_CANCELLED"
+        })
+        log.info(f"웹훅 실패로 결제 취소 처리: {payment_id}, 주문ID: {payment['order_id']}, 상태: PAYMENT_CANCELLED")
     
     return {
         "ok": True,

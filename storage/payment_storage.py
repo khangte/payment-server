@@ -42,7 +42,7 @@ class PaymentStorage:
     
     def get_payment_count_by_status(self) -> Dict[str, int]:
         """상태별 결제 개수 조회"""
-        counts = {"PENDING": 0, "PAYMENT_COMPLETED": 0}
+        counts = {"PENDING": 0, "PAYMENT_COMPLETED": 0, "PAYMENT_CANCELLED": 0}
         for payment in self._payments.values():
             status = payment["status"]
             if status in counts:

@@ -22,7 +22,7 @@ class PaymentCreateResponse(BaseModel):
     """결제 생성 응답 모델"""
     ok: bool = True
     tx_id: str
-    status: Literal["PENDING", "PAYMENT_COMPLETED"] = "PENDING"
+    status: Literal["PENDING", "PAYMENT_COMPLETED", "PAYMENT_CANCELLED"] = "PENDING"
     payment_id: str
 
 
@@ -35,7 +35,7 @@ class PaymentConfirmResponse(BaseModel):
     """결제 확인 응답 모델"""
     ok: bool = True
     payment_id: str
-    status: Literal["PENDING", "PAYMENT_COMPLETED"]
+    status: Literal["PENDING", "PAYMENT_COMPLETED", "PAYMENT_CANCELLED"]
     confirmed_at: str
 
 
@@ -46,7 +46,7 @@ class PaymentData(BaseModel):
     tx_id: str
     user_id: int
     amount: int
-    status: Literal["PENDING", "PAYMENT_COMPLETED"]
+    status: Literal["PENDING", "PAYMENT_COMPLETED", "PAYMENT_CANCELLED"]
     created_at: str
     confirmed_at: str | None
     callback_url: str
