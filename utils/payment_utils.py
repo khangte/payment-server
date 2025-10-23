@@ -7,11 +7,12 @@ import hashlib
 import base64
 import json
 import logging
+import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any
 import httpx
 
-from config.settings import WEBHOOK_SECRET, SERVICE_AUTH_TOKEN
+from config.settings import WEBHOOK_SECRET, SERVICE_AUTH_TOKEN, WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAY, WEBHOOK_TIMEOUT
 
 log = logging.getLogger("payment_utils")
 
@@ -31,7 +32,7 @@ def sign_webhook(body: bytes) -> str:
 
 async def post_webhook(url: str, payload: Dict[str, Any], event: str = "payment.completed") -> None:
     """
-    웹훅 전송
+    웹훅 전송 (재시도 로직 포함)
     
     Args:
         url: 웹훅 수신 URL
@@ -39,7 +40,7 @@ async def post_webhook(url: str, payload: Dict[str, Any], event: str = "payment.
         event: 이벤트 타입 (기본값: payment.completed)
     
     Raises:
-        Exception: 웹훅 전송 실패 시
+        Exception: 모든 재시도 실패 시
     """
     raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
     headers = {
@@ -50,25 +51,77 @@ async def post_webhook(url: str, payload: Dict[str, Any], event: str = "payment.
     if SERVICE_AUTH_TOKEN:
         headers["Authorization"] = f"Bearer {SERVICE_AUTH_TOKEN}"
 
-    try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(url, content=raw, headers=headers)
-            log.info(f"[webhook] -> {url} {resp.status_code}")
-            
-            # 응답 상태 코드 확인
-            if resp.status_code >= 400:
-                log.error(f"[webhook] HTTP 에러: {url} {resp.status_code} - {resp.text}")
-                raise Exception(f"HTTP {resp.status_code}: {resp.text}")
+    last_exception = None
+    
+    for attempt in range(WEBHOOK_MAX_RETRIES + 1):  # 0부터 시작하므로 +1
+        try:
+            async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+                resp = await client.post(url, content=raw, headers=headers)
                 
-    except httpx.ConnectError as e:
-        log.error(f"[webhook] 연결 실패: {url} - {str(e)}")
-        raise Exception(f"연결 실패: {str(e)}")
-    except httpx.TimeoutException as e:
-        log.error(f"[webhook] 타임아웃: {url} - {str(e)}")
-        raise Exception(f"타임아웃: {str(e)}")
-    except Exception as e:
-        log.error(f"[webhook] 기타 에러: {url} - {str(e)}")
-        raise
+                if attempt > 0:
+                    log.info(f"[webhook] 재시도 {attempt} 성공: {url} {resp.status_code}")
+                else:
+                    log.info(f"[webhook] -> {url} {resp.status_code}")
+                
+                # 응답 상태 코드 확인
+                if resp.status_code >= 400:
+                    error_msg = f"HTTP {resp.status_code}: {resp.text}"
+                    log.error(f"[webhook] HTTP 에러: {url} {resp.status_code} - {resp.text}")
+                    
+                    # 4xx 에러는 재시도하지 않음 (클라이언트 에러)
+                    if 400 <= resp.status_code < 500:
+                        raise Exception(error_msg)
+                    
+                    # 5xx 에러는 재시도 가능
+                    last_exception = Exception(error_msg)
+                    if attempt < WEBHOOK_MAX_RETRIES:
+                        log.warning(f"[webhook] 서버 에러로 재시도 예정: {url} (시도 {attempt + 1}/{WEBHOOK_MAX_RETRIES + 1})")
+                        await asyncio.sleep(WEBHOOK_RETRY_DELAY * (2 ** attempt))  # 지수 백오프
+                        continue
+                    else:
+                        raise last_exception
+                else:
+                    # 성공
+                    return
+                    
+        except httpx.ConnectError as e:
+            last_exception = Exception(f"연결 실패: {str(e)}")
+            log.error(f"[webhook] 연결 실패: {url} - {str(e)}")
+            
+            if attempt < WEBHOOK_MAX_RETRIES:
+                log.warning(f"[webhook] 연결 실패로 재시도 예정: {url} (시도 {attempt + 1}/{WEBHOOK_MAX_RETRIES + 1})")
+                await asyncio.sleep(WEBHOOK_RETRY_DELAY * (2 ** attempt))  # 지수 백오프
+                continue
+            else:
+                raise last_exception
+                
+        except httpx.TimeoutException as e:
+            last_exception = Exception(f"타임아웃: {str(e)}")
+            log.error(f"[webhook] 타임아웃: {url} - {str(e)}")
+            
+            if attempt < WEBHOOK_MAX_RETRIES:
+                log.warning(f"[webhook] 타임아웃으로 재시도 예정: {url} (시도 {attempt + 1}/{WEBHOOK_MAX_RETRIES + 1})")
+                await asyncio.sleep(WEBHOOK_RETRY_DELAY * (2 ** attempt))  # 지수 백오프
+                continue
+            else:
+                raise last_exception
+                
+        except Exception as e:
+            last_exception = e
+            log.error(f"[webhook] 기타 에러: {url} - {str(e)}")
+            
+            if attempt < WEBHOOK_MAX_RETRIES:
+                log.warning(f"[webhook] 에러로 재시도 예정: {url} (시도 {attempt + 1}/{WEBHOOK_MAX_RETRIES + 1})")
+                await asyncio.sleep(WEBHOOK_RETRY_DELAY * (2 ** attempt))  # 지수 백오프
+                continue
+            else:
+                raise last_exception
+    
+    # 모든 재시도 실패
+    log.error(f"[webhook] 모든 재시도 실패: {url} (총 {WEBHOOK_MAX_RETRIES + 1}회 시도)")
+    if last_exception is None:
+        raise Exception("웹훅 전송 실패: 알 수 없는 오류")
+    raise last_exception
 
 
 def create_payment_id(tx_id: str) -> str:
