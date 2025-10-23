@@ -11,9 +11,10 @@
 
 ### main.py (결제 서버 v3)
 - **자동 결제 생성**: `POST /api/v2/payments` - 결제 생성과 동시에 자동 완료 처리
-- **웹훅 전송**: 자동 완료 시 운영서버로 HMAC-SHA256 서명된 웹훅 전송
+- **웹훅 전송 + 재시도**: 자동 완료 시 운영서버로 HMAC-SHA256 서명된 웹훅 전송, 5xx/네트워크 오류에 대해 지수 백오프 재시도
+- **웹훅 실패 시 취소 처리**: 모든 재시도 실패 시 상태를 `PAYMENT_CANCELLED`로 변경
 - **결제 목록**: `GET /api/v2/pending-payments` - 모든 결제 현황 조회
-- **수동 완료**: `POST /api/v2/confirm-payment` - 필요시 수동으로 결제 완료 처리
+- **수동 완료**: `POST /api/v2/confirm-payment` - 필요시 수동으로 결제 완료 처리 (웹훅 실패 시에도 취소 처리)
 
 ### streamlit_app.py (관리 콘솔)
 - **결제 생성**: 웹 UI를 통한 새로운 결제 요청 생성 (자동 완료)
@@ -27,6 +28,9 @@
 ```env
 PAYMENT_WEBHOOK_SECRET=your_webhook_secret_key
 SERVICE_AUTH_TOKEN=your_auth_token  # 선택사항
+WEBHOOK_MAX_RETRIES=3               # 선택사항: 재시도 횟수(기본 3회, 총 4번 시도)
+WEBHOOK_RETRY_DELAY=1.0             # 선택사항: 재시도 기본 대기(초), 지수 백오프 적용
+WEBHOOK_TIMEOUT=10.0                # 선택사항: 웹훅 요청 타임아웃(초)
 ```
 
 ### 의존성 설치
@@ -100,12 +104,12 @@ Content-Type: application/json
 }
 ```
 
-**응답 (웹훅 전송 실패):**
+**응답 (웹훅 전송 실패 → 재시도 후 최종 실패):**
 ```json
 {
   "ok": true,
   "tx_id": "tx_1001",
-  "status": "PENDING",
+  "status": "PAYMENT_CANCELLED",
   "payment_id": "pay_tx_1001"
 }
 ```
@@ -120,12 +124,22 @@ Content-Type: application/json
 }
 ```
 
-**응답:**
+**응답 (웹훅 성공):**
 ```json
 {
   "ok": true,
   "payment_id": "pay_tx_1001",
   "status": "PAYMENT_COMPLETED",
+  "confirmed_at": "2024-01-01T12:00:00Z"
+}
+```
+
+**응답 (웹훅 전송 실패 → 재시도 후 최종 실패):**
+```json
+{
+  "ok": true,
+  "payment_id": "pay_tx_1001",
+  "status": "PAYMENT_CANCELLED",
   "confirmed_at": "2024-01-01T12:00:00Z"
 }
 ```
@@ -140,6 +154,7 @@ GET /api/v2/pending-payments
 {
   "pending_count": 2,
   "completed_count": 5,
+  "cancelled_count": 1,
   "payments": {
     "pay_tx_1001": {
       "payment_id": "pay_tx_1001",
@@ -147,7 +162,7 @@ GET /api/v2/pending-payments
       "tx_id": "tx_1001",
       "user_id": 1,
       "amount": 1000,
-      "status": "PENDING",
+      "status": "PAYMENT_CANCELLED",
       "created_at": "2024-01-01T12:00:00Z",
       "confirmed_at": null,
       "callback_url": "https://ops/api/orders/payment/webhook/v2/tx_1001"
@@ -185,9 +200,10 @@ def verify_webhook_signature(payload: bytes, signature: str, secret: str) -> boo
 
 1. **결제 요청**: 클라이언트가 `POST /api/v2/payments`로 결제 생성
 2. **자동 완료**: 결제 생성과 동시에 자동으로 `PAYMENT_COMPLETED` 상태로 변경
-3. **웹훅 전송**: 운영서버의 `callback_url`로 웹훅 자동 전송
-4. **상태 확인**: 결제 현황에서 완료된 결제 확인 가능
-5. **수동 완료**: 필요시 `POST /api/v2/confirm-payment`로 수동 완료 처리 가능
+3. **웹훅 전송**: 운영서버의 `callback_url`로 웹훅 자동 전송 (지수 백오프 재시도)
+4. **실패 처리**: 모든 재시도 실패 시 결제를 `PAYMENT_CANCELLED`로 전환
+5. **상태 확인**: 결제 현황에서 완료/취소 상태 확인 가능
+6. **수동 완료**: 필요시 `POST /api/v2/confirm-payment`로 수동 완료 처리 (웹훅 실패 시 취소 처리)
 
 ## 🔍 관리 콘솔 기능
 
@@ -250,7 +266,8 @@ LOG_LEVEL=INFO
 - **메모리 저장**: 개발 편의를 위해 인메모리 저장소 사용 (운영환경에서는 DB 연동 필요)
 - **자동 완료**: 결제 생성 시 자동으로 완료 처리되어 즉시 웹훅 전송
 - **멱등성**: 동일한 `tx_id`로 재요청 시 기존 결제 정보 반환
-- **에러 처리**: 웹훅 전송 실패 시에도 결제는 완료 처리됨
+- **에러 처리**: 웹훅 전송이 재시도에도 실패하면 결제를 `PAYMENT_CANCELLED`로 전환
+- **재시도 정책**: 5xx/연결실패/타임아웃에 대해 지수 백오프, 4xx는 즉시 실패 처리
 - **로깅**: 모든 주요 작업에 대한 상세 로그 기록
 
 ## 🔗 관련 문서
