@@ -1,6 +1,6 @@
 """
-Payment Server 유틸리티 함수들
-공통으로 사용되는 헬퍼 함수들을 정의합니다.
+    Payment Server 유틸리티 함수들
+    공통으로 사용되는 헬퍼 함수들을 정의합니다.
 """
 import hmac
 import hashlib
@@ -9,7 +9,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import httpx
 
 from config.settings import WEBHOOK_SECRET, SERVICE_AUTH_TOKEN, WEBHOOK_MAX_RETRIES, WEBHOOK_RETRY_DELAY, WEBHOOK_TIMEOUT
@@ -129,9 +129,9 @@ def create_payment_id(tx_id: str) -> str:
     return f"pay_{tx_id}"
 
 
-def create_webhook_payload(payment_data: Dict[str, Any]) -> Dict[str, Any]:
+def create_webhook_payload(payment_data: Dict[str, Any], failure_reason: Optional[str] = None) -> Dict[str, Any]:
     """웹훅 전송용 페이로드 생성"""
-    return {
+    payload = {
         "version": "v2",
         "payment_id": payment_data["payment_id"],
         "order_id": payment_data["order_id"],
@@ -142,3 +142,6 @@ def create_webhook_payload(payment_data: Dict[str, Any]) -> Dict[str, Any]:
         "created_at": payment_data["created_at"],
         "confirmed_at": payment_data["confirmed_at"],
     }
+    if failure_reason:
+        payload["failure_reason"] = failure_reason
+    return payload

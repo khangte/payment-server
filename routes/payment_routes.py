@@ -20,6 +20,19 @@ log = logging.getLogger("payment_routes")
 # 라우터 생성
 router = APIRouter()
 
+async def _send_terminal_webhook(payment: dict, *, event: str, failure_reason: str | None = None) -> bool:
+    """최종 상태 웹훅 전송 (실패해도 호출자 흐름은 유지)."""
+    callback_url = payment["callback_url"]
+    webhook_payload = create_webhook_payload(payment, failure_reason=failure_reason)
+    try:
+        log.info(f"웹훅 전송 시도: event={event}, url={callback_url}")
+        await post_webhook(callback_url, webhook_payload, event=event)
+        log.info(f"웹훅 전송 완료: event={event}, url={callback_url}")
+        return True
+    except Exception as webhook_error:
+        log.error(f"웹훅 전송 실패: event={event}, url={callback_url}, error={webhook_error}")
+        return False
+
 
 @router.get("/health")
 async def health():
@@ -93,16 +106,11 @@ async def start_payment_v2(req: PaymentInitV2):
         
         log.info(f"자동 결제 완료 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_COMPLETED")
         
-        # 웹훅 전송용 페이로드 생성
-        updated_payment = payment_storage.get_payment(payment_id)
-        webhook_payload = create_webhook_payload(updated_payment)
-        
         # 웹훅 전송
-        callback_url = str(req.callback_url)
-        log.info(f"웹훅 전송 시도: {callback_url}")
-        
-        await post_webhook(callback_url, webhook_payload, event="payment.completed")
-        log.info(f"웹훅 전송 완료: {callback_url}")
+        updated_payment = payment_storage.get_payment(payment_id)
+        completed_sent = await _send_terminal_webhook(updated_payment, event="payment.completed")
+        if not completed_sent:
+            raise RuntimeError("payment.completed webhook delivery failed")
         
         # 웹훅 전송 성공 시에만 PAYMENT_COMPLETED 반환
         return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_COMPLETED", "payment_id": payment_id}
@@ -114,6 +122,12 @@ async def start_payment_v2(req: PaymentInitV2):
             "status": "PAYMENT_CANCELLED"
         })
         log.info(f"웹훅 실패로 결제 취소 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_CANCELLED")
+        cancelled_payment = payment_storage.get_payment(payment_id)
+        await _send_terminal_webhook(
+            cancelled_payment,
+            event="payment.cancelled",
+            failure_reason=str(e),
+        )
         return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_CANCELLED", "payment_id": payment_id}
 
 
@@ -140,16 +154,14 @@ async def confirm_payment_v2(req: PaymentConfirmRequest):
     
     log.info(f"결제 완료 처리: {payment_id}, 주문ID: {payment['order_id']}, 상태: PAYMENT_COMPLETED")
     
+    final_status = "PAYMENT_COMPLETED"
+
     # 웹훅 전송
     try:
         updated_payment = payment_storage.get_payment(payment_id)
-        webhook_payload = create_webhook_payload(updated_payment)
-        
-        callback_url = payment["callback_url"]
-        log.info(f"웹훅 전송 시도: {callback_url}")
-        
-        await post_webhook(callback_url, webhook_payload, event="payment.completed")
-        log.info(f"웹훅 전송 완료: {callback_url}")
+        completed_sent = await _send_terminal_webhook(updated_payment, event="payment.completed")
+        if not completed_sent:
+            raise RuntimeError("payment.completed webhook delivery failed")
         
     except Exception as e:
         log.error(f"웹훅 전송 실패: {e}")
@@ -158,10 +170,17 @@ async def confirm_payment_v2(req: PaymentConfirmRequest):
             "status": "PAYMENT_CANCELLED"
         })
         log.info(f"웹훅 실패로 결제 취소 처리: {payment_id}, 주문ID: {payment['order_id']}, 상태: PAYMENT_CANCELLED")
+        cancelled_payment = payment_storage.get_payment(payment_id)
+        await _send_terminal_webhook(
+            cancelled_payment,
+            event="payment.cancelled",
+            failure_reason=str(e),
+        )
+        final_status = "PAYMENT_CANCELLED"
     
     return {
         "ok": True,
         "payment_id": payment_id,
-        "status": "PAYMENT_COMPLETED",
+        "status": final_status,
         "confirmed_at": confirmed_at
     }
