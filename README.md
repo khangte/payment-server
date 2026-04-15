@@ -1,6 +1,6 @@
 # Payment Server v3 (Webhook Auto Complete)
 
-결제 서버 v3는 자동 완료 처리와 웹훅 기반의 결제 처리 시스템입니다. 결제 생성 시 자동으로 완료 처리되며, 완료 시 운영서버로 웹훅을 전송합니다.
+결제 서버 v3는 웹훅 기반의 비동기 결제 처리 시스템입니다. 결제 생성 시 즉시 `PENDING` 응답을 반환하고, 백그라운드에서 완료 처리 후 운영서버로 웹훅을 전송합니다.
 
 ## 구성
 - `main.py`: FastAPI 앱
@@ -10,21 +10,23 @@
 - `streamlit_app.py`: 관리 콘솔
 
 ## 주요 동작
-- `POST /api/v2/payments`: 결제 생성 → 2초 후 자동 완료 → 웹훅 전송
+- `POST /api/v2/payments`: 결제 생성 후 즉시 `PENDING` 응답 반환
+  - 완료/취소 및 웹훅 전송은 백그라운드 태스크에서 처리
   - 웹훅 실패(4xx 즉시 실패, 5xx/네트워크/타임아웃 재시도) 시 `PAYMENT_CANCELLED`
 - `POST /api/v2/confirm-payment`: `PENDING` 결제만 수동 완료 후 웹훅 전송
   - 웹훅 실패 시 저장 상태는 `PAYMENT_CANCELLED`로 변경
-- `GET /api/v2/pending-payments`: 전체 결제 목록 + `PENDING/COMPLETED` 카운트 (개발용)
+- `GET /api/v2/pending-payments`: 전체 결제 목록 + `PENDING/COMPLETED/CANCELLED` 카운트 (개발용)
 - `GET /health`: 헬스체크
 
 ## 워크플로우
 
 1. **결제 요청**: 클라이언트가 `POST /api/v2/payments`로 결제 생성
-2. **자동 완료**: 결제 생성과 동시에 자동으로 `PAYMENT_COMPLETED` 상태로 변경
-3. **웹훅 전송**: 운영서버의 `callback_url`로 웹훅 자동 전송 (지수 백오프 재시도)
-4. **실패 처리**: 모든 재시도 실패 시 결제를 `PAYMENT_CANCELLED`로 전환
-5. **상태 확인**: 결제 현황에서 완료/취소 상태 확인 가능
-6. **수동 완료**: 필요시 `POST /api/v2/confirm-payment`로 수동 완료 처리 (웹훅 실패 시 취소 처리)
+2. **즉시 응답**: 생성 요청은 `PENDING` 상태로 즉시 종료
+3. **백그라운드 완료 처리**: 결제 상태를 `PAYMENT_COMPLETED`로 변경
+4. **웹훅 전송**: 운영서버의 `callback_url`로 웹훅 자동 전송 (지수 백오프 재시도)
+5. **실패 처리**: 모든 재시도 실패 시 결제를 `PAYMENT_CANCELLED`로 전환
+6. **상태 확인**: 결제 현황에서 완료/취소 상태 확인 가능
+7. **수동 완료**: 필요시 `POST /api/v2/confirm-payment`로 수동 완료 처리 (웹훅 실패 시 취소 처리)
 
 
 ## 환경 변수
