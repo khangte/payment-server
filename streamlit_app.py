@@ -106,7 +106,7 @@ with st.sidebar.form("create_payment_form", clear_on_submit=False):
     st.caption("callback_url을 운영서버의 v2 수신 엔드포인트로 설정하세요.")
     auto_cb = st.checkbox("order_id로 callback_url 자동 구성", value=True, key="form_cb_auto")
 
-    default_cb = f"{DEFAULT_API_BASE_URL}/api/orders/payment/{int(order_id)}/confirm/v2"
+    default_cb = f"{DEFAULT_API_BASE_URL}/api/orders/payment/webhook/v2/{tx_id}"
     if auto_cb:
         callback_url = default_cb
         st.text_input("callback_url (자동)", value=callback_url, disabled=True, key="form_cb_url_auto")
