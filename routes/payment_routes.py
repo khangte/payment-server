@@ -4,7 +4,7 @@ FastAPI 엔드포인트를 정의합니다.
 """
 import asyncio
 import logging
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from models.payment_models import (
     PaymentInitV2, PaymentCreateResponse, 
@@ -19,6 +19,7 @@ log = logging.getLogger("payment_routes")
 
 # 라우터 생성
 router = APIRouter()
+AUTO_COMPLETE_DELAY_SEC = 2.0
 
 async def _send_terminal_webhook(payment: dict, *, event: str, failure_reason: str | None = None) -> bool:
     """최종 상태 웹훅 전송 (실패해도 호출자 흐름은 유지)."""
@@ -32,6 +33,56 @@ async def _send_terminal_webhook(payment: dict, *, event: str, failure_reason: s
     except Exception as webhook_error:
         log.error(f"웹훅 전송 실패: event={event}, url={callback_url}, error={webhook_error}")
         return False
+
+
+async def _auto_complete_payment(payment_id: str) -> None:
+    """
+    결제 생성 직후 백그라운드에서 자동 완료/취소를 처리한다.
+    - delay 후 PENDING 결제를 PAYMENT_COMPLETED로 변경
+    - 완료 웹훅 실패 시 PAYMENT_CANCELLED로 전환하고 취소 웹훅 시도
+    """
+    await asyncio.sleep(AUTO_COMPLETE_DELAY_SEC)
+
+    current_payment = payment_storage.get_payment(payment_id)
+    if not current_payment:
+        log.warning(f"자동 완료 대상 결제가 존재하지 않음: payment_id={payment_id}")
+        return
+
+    # 수동 완료/취소 등으로 이미 상태가 변경된 경우 자동 완료를 건너뛴다.
+    if current_payment["status"] != "PENDING":
+        log.info(
+            f"자동 완료 건너뜀: payment_id={payment_id}, status={current_payment['status']}"
+        )
+        return
+
+    try:
+        confirmed_at = now_iso()
+        payment_storage.update_payment(
+            payment_id,
+            {"status": "PAYMENT_COMPLETED", "confirmed_at": confirmed_at},
+        )
+        completed_payment = payment_storage.get_payment(payment_id)
+        if not completed_payment:
+            raise RuntimeError("completed payment snapshot missing")
+
+        log.info(
+            f"자동 결제 완료 처리: payment_id={payment_id}, order_id={completed_payment['order_id']}"
+        )
+        completed_sent = await _send_terminal_webhook(
+            completed_payment, event="payment.completed"
+        )
+        if not completed_sent:
+            raise RuntimeError("payment.completed webhook delivery failed")
+    except Exception as e:
+        log.error(f"자동 결제 완료 처리 실패: payment_id={payment_id}, error={e}")
+        payment_storage.update_payment(payment_id, {"status": "PAYMENT_CANCELLED"})
+        cancelled_payment = payment_storage.get_payment(payment_id)
+        if cancelled_payment:
+            await _send_terminal_webhook(
+                cancelled_payment,
+                event="payment.cancelled",
+                failure_reason=str(e),
+            )
 
 
 @router.get("/health")
@@ -61,16 +112,18 @@ async def list_payments():
     return {
         "pending_count": counts["PENDING"],
         "completed_count": counts["PAYMENT_COMPLETED"],
+        "cancelled_count": counts["PAYMENT_CANCELLED"],
         "payments": all_payments,
     }
 
 
 @router.post("/api/v2/payments", response_model=PaymentCreateResponse)
-async def start_payment_v2(req: PaymentInitV2):
+async def start_payment_v2(req: PaymentInitV2, background_tasks: BackgroundTasks):
     """
     결제 생성(v2): callback_url은 운영서버의 웹훅 수신 엔드포인트
     (ex. /api/orders/payment/webhook/v2/{tx_id})
-    자동으로 결제 완료 처리됩니다.
+    생성 요청은 즉시 PENDING 응답을 반환하고,
+    완료/웹훅 처리는 백그라운드 태스크에서 처리된다.
     """
     payment_id = create_payment_id(req.tx_id)
     created_at = now_iso()
@@ -90,45 +143,10 @@ async def start_payment_v2(req: PaymentInitV2):
     
     payment_storage.create_payment(payment_data)
     log.info(f"결제 요청 생성: {payment_id}, 주문ID: {req.order_id}, 상태: PENDING")
-    
-    # 자동결제 처리 전 2초 대기
-    await asyncio.sleep(2)
-    log.info("자동결제 처리 시작 - 2초 대기 완료")
-    
-    # 자동으로 결제 완료 처리
-    try:
-        # 결제 완료로 상태 변경
-        confirmed_at = now_iso()
-        payment_storage.update_payment(payment_id, {
-            "status": "PAYMENT_COMPLETED",
-            "confirmed_at": confirmed_at
-        })
-        
-        log.info(f"자동 결제 완료 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_COMPLETED")
-        
-        # 웹훅 전송
-        updated_payment = payment_storage.get_payment(payment_id)
-        completed_sent = await _send_terminal_webhook(updated_payment, event="payment.completed")
-        if not completed_sent:
-            raise RuntimeError("payment.completed webhook delivery failed")
-        
-        # 웹훅 전송 성공 시에만 PAYMENT_COMPLETED 반환
-        return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_COMPLETED", "payment_id": payment_id}
-        
-    except Exception as e:
-        log.error(f"자동 결제 완료 처리 실패: {e}")
-        # 웹훅 전송 실패 시 결제 취소로 상태 변경
-        payment_storage.update_payment(payment_id, {
-            "status": "PAYMENT_CANCELLED"
-        })
-        log.info(f"웹훅 실패로 결제 취소 처리: {payment_id}, 주문ID: {req.order_id}, 상태: PAYMENT_CANCELLED")
-        cancelled_payment = payment_storage.get_payment(payment_id)
-        await _send_terminal_webhook(
-            cancelled_payment,
-            event="payment.cancelled",
-            failure_reason=str(e),
-        )
-        return {"ok": True, "tx_id": req.tx_id, "status": "PAYMENT_CANCELLED", "payment_id": payment_id}
+
+    background_tasks.add_task(_auto_complete_payment, payment_id)
+
+    return {"ok": True, "tx_id": req.tx_id, "status": "PENDING", "payment_id": payment_id}
 
 
 @router.post("/api/v2/confirm-payment", response_model=PaymentConfirmResponse)
