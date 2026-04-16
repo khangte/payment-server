@@ -55,12 +55,16 @@ async def _auto_complete_payment(payment_id: str) -> None:
         )
         return
 
+    confirmed_at = now_iso()
+    if not payment_storage.update_payment_if_status(
+        payment_id,
+        "PENDING",
+        {"status": "PAYMENT_COMPLETED", "confirmed_at": confirmed_at},
+    ):
+        log.info(f"자동 완료 건너뜀 (이미 상태 변경됨): payment_id={payment_id}")
+        return
+
     try:
-        confirmed_at = now_iso()
-        payment_storage.update_payment(
-            payment_id,
-            {"status": "PAYMENT_COMPLETED", "confirmed_at": confirmed_at},
-        )
         completed_payment = payment_storage.get_payment(payment_id)
         if not completed_payment:
             raise RuntimeError("completed payment snapshot missing")
@@ -159,16 +163,14 @@ async def confirm_payment_v2(req: PaymentConfirmRequest):
     payment = payment_storage.get_payment(payment_id)
     if not payment:
         raise HTTPException(status_code=404, detail="결제 ID를 찾을 수 없습니다")
-    
-    if payment["status"] != "PENDING":
-        raise HTTPException(status_code=400, detail="이미 처리된 결제입니다")
-    
-    # 결제 완료로 상태 변경
+
     confirmed_at = now_iso()
-    payment_storage.update_payment(payment_id, {
-        "status": "PAYMENT_COMPLETED",
-        "confirmed_at": confirmed_at
-    })
+    if not payment_storage.update_payment_if_status(
+        payment_id,
+        "PENDING",
+        {"status": "PAYMENT_COMPLETED", "confirmed_at": confirmed_at},
+    ):
+        raise HTTPException(status_code=400, detail="이미 처리된 결제입니다")
     
     log.info(f"결제 완료 처리: {payment_id}, 주문ID: {payment['order_id']}, 상태: PAYMENT_COMPLETED")
     

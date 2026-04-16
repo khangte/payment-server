@@ -38,6 +38,18 @@ class PaymentStorage:
                 log.info(f"결제 데이터 업데이트: {payment_id}")
             else:
                 log.warning(f"존재하지 않는 결제 ID: {payment_id}")
+
+    def update_payment_if_status(
+        self, payment_id: str, expected_status: str, updates: Dict[str, Any]
+    ) -> bool:
+        """expected_status일 때만 업데이트 (compare-and-swap). 성공 여부 반환."""
+        with self._lock:
+            payment = self._payments.get(payment_id)
+            if not payment or payment["status"] != expected_status:
+                return False
+            payment.update(updates)
+            log.info(f"결제 상태 전환: {payment_id} {expected_status} -> {updates.get('status', '?')}")
+            return True
     
     def get_payments_by_status(self, status: str) -> List[Dict[str, Any]]:
         """상태별 결제 목록 조회"""
