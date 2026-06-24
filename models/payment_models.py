@@ -37,16 +37,3 @@ class PaymentConfirmResponse(BaseModel):
     payment_id: str
     status: Literal["PENDING", "PAYMENT_COMPLETED", "PAYMENT_CANCELLED"]
     confirmed_at: str
-
-
-class PaymentData(BaseModel):
-    """결제 데이터 모델 (내부 저장용)"""
-    payment_id: str
-    order_id: int
-    tx_id: str
-    user_id: int
-    amount: int
-    status: Literal["PENDING", "PAYMENT_COMPLETED", "PAYMENT_CANCELLED"]
-    created_at: str
-    confirmed_at: str | None
-    callback_url: str

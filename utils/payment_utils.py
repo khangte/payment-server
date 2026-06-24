@@ -124,11 +124,6 @@ async def post_webhook(url: str, payload: Dict[str, Any], event: str = "payment.
     raise last_exception
 
 
-def create_payment_id(tx_id: str) -> str:
-    """결제 ID 생성"""
-    return f"pay_{tx_id}"
-
-
 def create_webhook_payload(payment_data: Dict[str, Any], failure_reason: Optional[str] = None) -> Dict[str, Any]:
     """웹훅 전송용 페이로드 생성"""
     payload = {

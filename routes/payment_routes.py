@@ -11,7 +11,7 @@ from models.payment_models import (
     PaymentConfirmRequest, PaymentConfirmResponse
 )
 from utils.payment_utils import (
-    now_iso, post_webhook, create_payment_id, create_webhook_payload
+    now_iso, post_webhook, create_webhook_payload
 )
 from storage.payment_storage import payment_storage
 
@@ -19,7 +19,6 @@ log = logging.getLogger("payment_routes")
 
 # 라우터 생성
 router = APIRouter()
-AUTO_COMPLETE_DELAY_SEC = 2.0
 
 async def _send_terminal_webhook(payment: dict, *, event: str, failure_reason: str | None = None) -> bool:
     """최종 상태 웹훅 전송 (실패해도 호출자 흐름은 유지)."""
@@ -41,7 +40,7 @@ async def _auto_complete_payment(payment_id: str) -> None:
     - delay 후 PENDING 결제를 PAYMENT_COMPLETED로 변경
     - 완료 웹훅 실패 시 PAYMENT_CANCELLED로 전환하고 취소 웹훅 시도
     """
-    await asyncio.sleep(AUTO_COMPLETE_DELAY_SEC)
+    await asyncio.sleep(2.0)
 
     current_payment = payment_storage.get_payment(payment_id)
     if not current_payment:
@@ -129,7 +128,7 @@ async def start_payment_v2(req: PaymentInitV2, background_tasks: BackgroundTasks
     생성 요청은 즉시 PENDING 응답을 반환하고,
     완료/웹훅 처리는 백그라운드 태스크에서 처리된다.
     """
-    payment_id = create_payment_id(req.tx_id)
+    payment_id = f"pay_{req.tx_id}"
     created_at = now_iso()
 
     # 결제 데이터 생성 (PENDING으로 시작)
